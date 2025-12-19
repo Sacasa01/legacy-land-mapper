@@ -1,0 +1,12 @@
+# --- Entorno Virtual (¡Muy importante!) ---
+.venv/
+venv/
+env/
+
+__pycache__/
+*.pyc
+
+# *.html
+
+.DS_Store
+Thumbs.db

@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mapa de Fincas - Omar</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100%; }
+        
+        /* --- BOTÓN PARA MOSTRAR/OCULTAR PANEL --- */
+        .toggle-panel-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+        
+        .toggle-panel-btn:hover {
+            background: #f0f0f0;
+        }
+        
+        /* --- PANEL IZQUIERDO (DESKTOP) --- */
+        .info-panel {
+            position: absolute; 
+            top: 20px; 
+            left: 80px;
+            z-index: 1000;
+            background: white; 
+            padding: 20px; 
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); 
+            width: 320px;
+            max-height: 90vh; 
+            overflow-y: auto;
+            border: 1px solid rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .info-panel.hidden {
+            transform: translateX(-420px);
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .header-box { border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        h1 { margin: 0; font-size: 22px; color: #1a1a1a; font-weight: 700; }
+        .subtitle { color: #666; font-size: 13px; margin-top: 5px; }
+        
+        /* Estadísticas */
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #eee; }
+        .stat-val { display: block; font-weight: 800; color: #2c3e50; font-size: 20px; }
+        .stat-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 5px; }
+        
+        /* Buscador */
+        .search-box { position: relative; margin-bottom: 20px; }
+        .search-input { 
+            width: 100%; padding: 12px; border: 1px solid #e0e0e0; 
+            border-radius: 8px; box-sizing: border-box; font-size: 14px; transition: all 0.2s;
+        }
+        .search-input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 3px rgba(52,152,219,0.1); }
+        .search-results { 
+            max-height: 200px; overflow-y: auto; border: 1px solid #eee; 
+            display: none; margin-top: 5px; border-radius: 8px; background: white;
+            position: absolute; width: 100%; z-index: 2000; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .result-item { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
+        .result-item:hover { background: #f8f9fa; color: #3498db; }
+        
+        /* Filtros */
+        .filter-section { border-top: 1px solid #eee; padding-top: 20px; }
+        .filter-btn { 
+            display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px; margin: 6px 0; 
+            border: 1px solid #eee; background: white; cursor: pointer; 
+            border-radius: 6px; text-align: left; font-size: 13px; color: #444; transition: all 0.2s;
+        }
+        .filter-btn:hover { background: #f4f6f7; border-color: #d0d0d0; }
+        .filter-btn-left { display: flex; align-items: center; }
+        .filter-btn-right { font-size: 12px; color: #888; font-weight: 600; }
+        .color-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; }
+        
+        /* --- POPUP MEJORADO --- */
+        .leaflet-popup-content-wrapper { border-radius: 8px; box-shadow: 0 3px 14px rgba(0,0,0,0.2); padding: 0; overflow: hidden; }
+        .leaflet-popup-content { margin: 0; width: 280px !important; }
+        
+        .popup-header-clean { 
+            padding: 15px 20px; 
+            background: #fff; 
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .popup-title { font-size: 16px; font-weight: 700; color: #2c3e50; margin: 0; }
+        .popup-type-badge { 
+            font-size: 11px; text-transform: uppercase; background: #eee; 
+            padding: 2px 6px; border-radius: 4px; color: #666; margin-top: 5px; display: inline-block;
+        }
+        
+        .popup-body { padding: 15px 20px; background: #fff; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #555; }
+        .data-label { font-weight: 600; color: #999; }
+        .data-value { color: #333; font-family: monospace; }
+        
+        .cadastre-link {
+            display: block; text-align: center; margin-top: 15px; padding: 8px;
+            background: #e8f4fc; color: #3498db; text-decoration: none;
+            border-radius: 6px; font-size: 12px; font-weight: 600; transition: background 0.2s;
+        }
+        .cadastre-link:hover { background: #d1e8fa; }
+        
+        /* Control de Capas Simple */
+        .layer-toggle { 
+            position: absolute; top: 20px; right: 20px; z-index: 1000; 
+            background: white; padding: 10px 15px; border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+        }
+        
+        /* --- RESPONSIVE MÓVIL --- */
+        @media (max-width: 768px) {
+            .toggle-panel-btn {
+                top: 10px;
+                left: 10px;
+                width: 45px;
+                height: 45px;
+                font-size: 20px;
+                z-index: 1002;
+            }
+            
+            /* Panel inferior deslizable en móvil */
+            .info-panel {
+                position: fixed;
+                top: auto;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                width: 100%;
+                max-height: 75vh;
+                border-radius: 20px 20px 0 0;
+                padding: 20px 15px 15px;
+                transform: translateY(0);
+                opacity: 1;
+                pointer-events: all;
+                box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+            }
+            
+            .info-panel.hidden {
+                transform: translateY(calc(100% - 70px));
+            }
+            
+            /* Indicador visual de deslizamiento */
+            .info-panel::before {
+                content: '';
+                position: absolute;
+                top: 8px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 40px;
+                height: 5px;
+                background: #ccc;
+                border-radius: 3px;
+            }
+            
+            .header-box {
+                margin-top: 15px;
+                padding-bottom: 12px;
+                margin-bottom: 15px;
+            }
+            
+            h1 {
+                font-size: 18px;
+            }
+            
+            .subtitle {
+                font-size: 12px;
+            }
+            
+            .stat-grid {
+                gap: 10px;
+                margin-bottom: 15px;
+            }
+            
+            .stat-card {
+                padding: 12px;
+            }
+            
+            .stat-val {
+                font-size: 18px;
+            }
+            
+            .stat-label {
+                font-size: 10px;
+            }
+            
+            .search-input {
+                padding: 10px;
+                font-size: 14px;
+            }
+            
+            .filter-btn {
+                padding: 12px;
+                margin: 8px 0;
+            }
+            
+            .layer-toggle {
+                top: 10px;
+                right: 10px;
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+            
+            /* Ajustar popups en móvil */
+            .leaflet-popup-content {
+                width: 250px !important;
+            }
+            
+            .popup-header-clean {
+                padding: 12px 15px;
+            }
+            
+            .popup-title {
+                font-size: 15px;
+            }
+            
+            .popup-body {
+                padding: 12px 15px;
+            }
+            
+            .data-row {
+                font-size: 12px;
+            }
+        }
+        
+        /* Para pantallas muy pequeñas */
+        @media (max-width: 400px) {
+            .info-panel {
+                max-height: 80vh;
+            }
+            
+            .stat-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 16px;
+            }
+            
+            .toggle-panel-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Botón para mostrar/ocultar panel -->
+<button class="toggle-panel-btn" id="togglePanelBtn" onclick="togglePanel()">
+    ☰
+</button>
+
+<div class="info-panel hidden" id="infoPanel">
+    <div class="header-box">
+        <h1>Omar</h1>
+        <div class="subtitle">Patrimonio Inmobiliario • 19/12/2025</div>
+    </div>
+    
+    <div class="stat-grid">
+        <div class="stat-card">
+            <span class="stat-val" id="total-fincas">0</span>
+            <span class="stat-label">Parcelas</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-val" id="total-area">0 ha</span>
+            <span class="stat-label">Superficie</span>
+        </div>
+    </div>
+    
+    <div class="search-box">
+        <input type="text" id="searchInput" class="search-input" placeholder="🔍 Buscar parcela...">
+        <div id="searchResults" class="search-results"></div>
+    </div>
+    
+    <div class="filter-section">
+        <h4 style="margin: 0 0 15px 0; font-size: 12px; color: #999; text-transform: uppercase;">Filtrar por Tipo</h4>
+        <div id="filterContainer"></div>
+    </div>
+</div>
+
+<div class="layer-toggle">
+    <input type="checkbox" id="toggleCatastro" checked>
+    <label for="toggleCatastro" style="cursor:pointer">Catastro</label>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // DATOS
+    const data = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"ref": "36020A041000190000KF", "tipo": "PINOS", "nombre": "LEIRA DA RESTRE", "color": "#FF6347", "area_m2": 1865.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020022, 42.797824], [-8.020065, 42.797833], [-8.019943, 42.797907], [-8.019762, 42.798045], [-8.019657, 42.798117], [-8.019477, 42.797996], [-8.019236, 42.797852], [-8.019118, 42.797781], [-8.019133, 42.79765], [-8.019209, 42.797664], [-8.019558, 42.79773], [-8.020022, 42.797824]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000160000KK", "tipo": "ARBOLES", "nombre": "ZARRAS", "color": "#00CED1", "area_m2": 179.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020156, 42.797597], [-8.02017, 42.797655], [-8.020168, 42.797706], [-8.019968, 42.797678], [-8.01995, 42.79763], [-8.01994, 42.7976], [-8.020156, 42.797597]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000170000KR", "tipo": "VIVIENDA", "nombre": "NABAL", "color": "#FFEBCD", "area_m2": 176.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.019968, 42.797678], [-8.020168, 42.797706], [-8.020167, 42.797719], [-8.020157, 42.797758], [-8.020139, 42.797775], [-8.020109, 42.797806], [-8.020065, 42.797833], [-8.020022, 42.797824], [-8.019968, 42.797678]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000140000KW", "tipo": "PASTO", "nombre": "ZARRA DE BAIXO", "color": "#FFA500", "area_m2": 1675.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020237, 42.797108], [-8.02027, 42.797218], [-8.020265, 42.79724], [-8.020227, 42.79728], [-8.020121, 42.797373], [-8.020118, 42.797389], [-8.020122, 42.797417], [-8.019914, 42.797369], [-8.019909, 42.797411], [-8.019423, 42.797345], [-8.019464, 42.797328], [-8.019616, 42.797266], [-8.01975, 42.797187], [-8.019902, 42.797069], [-8.019999, 42.796987], [-8.020104, 42.79704], [-8.020237, 42.797108]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000100000KU", "tipo": "MATORRAL", "nombre": "SOUTO", "color": "#FFFF00", "area_m2": 8607.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020722, 42.79611], [-8.020446, 42.795997], [-8.018861, 42.795348], [-8.018761, 42.795307], [-8.018637, 42.794934], [-8.018726, 42.794958], [-8.018834, 42.794986], [-8.019128, 42.795036], [-8.019359, 42.795066], [-8.019611, 42.795112], [-8.019798, 42.795169], [-8.019905, 42.795193], [-8.020007, 42.795198], [-8.020131, 42.795179], [-8.020154, 42.795173], [-8.020342, 42.795422], [-8.020366, 42.795452], [-8.020457, 42.795567], [-8.020597, 42.795784], [-8.020664, 42.795929], [-8.02072, 42.796086], [-8.020722, 42.79611]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000180000KY", "tipo": "MATORRAL", "nombre": "CONZADO DA RESTRE", "color": "#FFFF00", "area_m2": 924.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020022, 42.797824], [-8.019558, 42.79773], [-8.019209, 42.797664], [-8.019133, 42.79765], [-8.019134, 42.797635], [-8.01918, 42.797547], [-8.019869, 42.797664], [-8.019968, 42.797678], [-8.020022, 42.797824]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000150000KD", "tipo": "LABRADIO", "nombre": "ORTELO", "color": "#FFA500", "area_m2": 1295.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020138, 42.797524], [-8.020156, 42.797597], [-8.01994, 42.7976], [-8.01995, 42.79763], [-8.019968, 42.797678], [-8.019869, 42.797664], [-8.01918, 42.797547], [-8.019216, 42.797477], [-8.019304, 42.797413], [-8.019914, 42.7975], [-8.019905, 42.797449], [-8.020135, 42.797499], [-8.020138, 42.797524]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000050000KL", "tipo": "MATORRAL", "nombre": "REGUEIRO", "color": "#FFFF00", "area_m2": 2043.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021046, 42.796546], [-8.021074, 42.79659], [-8.020799, 42.796795], [-8.020694, 42.796903], [-8.020464, 42.796874], [-8.02035, 42.796859], [-8.020331, 42.796837], [-8.020337, 42.796835], [-8.020529, 42.796674], [-8.020612, 42.796564], [-8.020656, 42.796508], [-8.020738, 42.796395], [-8.020772, 42.796253], [-8.020769, 42.796226], [-8.020873, 42.796222], [-8.020942, 42.796308], [-8.021046, 42.796546]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000120000KI", "tipo": "MATORRAL", "nombre": "SOUTO", "color": "#FFFF00", "area_m2": 2244.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.02039, 42.796435], [-8.020459, 42.796494], [-8.020368, 42.796545], [-8.020236, 42.796595], [-8.020038, 42.796648], [-8.019974, 42.79662], [-8.019905, 42.79661], [-8.019822, 42.796598], [-8.019817, 42.79646], [-8.019797, 42.796264], [-8.019739, 42.796207], [-8.020134, 42.79619], [-8.020268, 42.796183], [-8.020347, 42.796186], [-8.020457, 42.796225], [-8.020451, 42.796268], [-8.02044, 42.796279], [-8.020388, 42.796336], [-8.020344, 42.796364], [-8.02039, 42.796435]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000060000KS", "tipo": "PRADO", "nombre": "PORTACENDOI", "color": "#00FFFF", "area_m2": 701.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021318, 42.797471], [-8.021458, 42.797503], [-8.021305, 42.79771], [-8.02127, 42.79777], [-8.020918, 42.798016], [-8.021061, 42.797804], [-8.021165, 42.797652], [-8.021274, 42.797469], [-8.021318, 42.797471]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000040000KD", "tipo": "MATORRAL", "nombre": "REGUEIRO", "color": "#FFFF00", "area_m2": 747.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021146, 42.796704], [-8.021189, 42.796772], [-8.020872, 42.796963], [-8.020836, 42.796943], [-8.020702, 42.796904], [-8.020694, 42.796903], [-8.020799, 42.796795], [-8.021074, 42.79659], [-8.021146, 42.796704]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000200000KM", "tipo": "LABRADIO", "nombre": "ESPIÑO", "color": "#FFA500", "area_m2": 1734.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.019477, 42.797996], [-8.019657, 42.798117], [-8.019546, 42.798176], [-8.019313, 42.798324], [-8.019255, 42.798361], [-8.01923, 42.798334], [-8.018977, 42.798069], [-8.018978, 42.798028], [-8.018985, 42.798025], [-8.019066, 42.797946], [-8.019108, 42.797864], [-8.019118, 42.797781], [-8.019236, 42.797852], [-8.019477, 42.797996]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000020000KP", "tipo": "MATORRAL", "nombre": "COTO DA BARREIRA", "color": "#FFFF00", "area_m2": 251.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021541, 42.797335], [-8.021537, 42.797354], [-8.021485, 42.797467], [-8.021458, 42.797503], [-8.021318, 42.797471], [-8.02131, 42.797381], [-8.021302, 42.797357], [-8.021541, 42.797335]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000080000KG", "tipo": "MATORRAL", "nombre": "SOUTO LONGO", "color": "#FFFF00", "area_m2": 2283.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021077, 42.796093], [-8.021109, 42.796211], [-8.020927, 42.796219], [-8.020875, 42.796165], [-8.020828, 42.796095], [-8.020777, 42.795949], [-8.02075, 42.795832], [-8.020698, 42.795697], [-8.020663, 42.795631], [-8.020557, 42.795479], [-8.020391, 42.795234], [-8.020335, 42.795097], [-8.020381, 42.795069], [-8.020521, 42.795071], [-8.020648, 42.795087], [-8.020643, 42.7951], [-8.020614, 42.795166], [-8.020601, 42.795208], [-8.020615, 42.795258], [-8.020873, 42.795677], [-8.020992, 42.795865], [-8.021034, 42.79595], [-8.021077, 42.796093]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000090000KN", "tipo": "MATORRAL", "nombre": "SOUTO", "color": "#FFFF00", "area_m2": 733.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.02083, 42.796166], [-8.020873, 42.796222], [-8.020769, 42.796226], [-8.020755, 42.796082], [-8.020698, 42.795922], [-8.02063, 42.795775], [-8.020488, 42.795555], [-8.020373, 42.795409], [-8.020187, 42.795164], [-8.020255, 42.795145], [-8.020296, 42.79512], [-8.020343, 42.79524], [-8.020536, 42.795501], [-8.020682, 42.795739], [-8.02074, 42.795906], [-8.020759, 42.795994], [-8.020788, 42.796073], [-8.02083, 42.796166]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000110000KB", "tipo": "MATORRAL", "nombre": "SOUTO", "color": "#FFFF00", "area_m2": 263.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.02044, 42.796279], [-8.020602, 42.796325], [-8.020542, 42.796402], [-8.020459, 42.796494], [-8.02039, 42.796435], [-8.020344, 42.796364], [-8.020388, 42.796336], [-8.02044, 42.796279]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000030000KW", "tipo": "MATORRAL", "nombre": "COTO DA BARREIRA", "color": "#FFFF00", "area_m2": 700.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021112, 42.797099], [-8.021099, 42.797089], [-8.020872, 42.796963], [-8.021189, 42.796772], [-8.021239, 42.796852], [-8.021352, 42.796974], [-8.021112, 42.797099]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000010000KH", "tipo": "MATORRAL", "nombre": "MONTE BALADOIRO", "color": "#FFFF00", "area_m2": 15558.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020464, 42.797099], [-8.021061, 42.797804], [-8.020918, 42.798016], [-8.019704, 42.798866], [-8.019315, 42.799121], [-8.01907, 42.798927], [-8.018912, 42.798834], [-8.018945, 42.798764], [-8.019011, 42.798603], [-8.019013, 42.798597], [-8.019055, 42.798445], [-8.019059, 42.798428], [-8.01907, 42.798381], [-8.019073, 42.79837], [-8.019049, 42.798273], [-8.01898, 42.798206], [-8.018883, 42.798168], [-8.018881, 42.798168], [-8.018727, 42.798151], [-8.01877, 42.798115], [-8.018879, 42.798069], [-8.018978, 42.798028], [-8.018977, 42.798069], [-8.01923, 42.798334], [-8.019255, 42.798361], [-8.019313, 42.798324], [-8.019546, 42.798176], [-8.019657, 42.798117], [-8.019762, 42.798045], [-8.019943, 42.797907], [-8.020065, 42.797833], [-8.020109, 42.797806], [-8.020139, 42.797775], [-8.020157, 42.797758], [-8.020167, 42.797719], [-8.020168, 42.797706], [-8.02017, 42.797655], [-8.020156, 42.797597], [-8.020138, 42.797524], [-8.020135, 42.797499], [-8.020122, 42.797417], [-8.020118, 42.797389], [-8.020121, 42.797373], [-8.020227, 42.79728], [-8.020265, 42.79724], [-8.02027, 42.797218], [-8.020237, 42.797108], [-8.020258, 42.79711], [-8.020329, 42.797082], [-8.020424, 42.797051], [-8.020464, 42.797099]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000130000KP", "tipo": "ARBOLES", "nombre": "PEREIRAS", "color": "#00CED1", "area_m2": 308.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020299, 42.796869], [-8.020299, 42.796895], [-8.020286, 42.796923], [-8.020254, 42.796989], [-8.020217, 42.797027], [-8.020237, 42.797108], [-8.020104, 42.79704], [-8.019999, 42.796987], [-8.020011, 42.796976], [-8.02013, 42.796916], [-8.020291, 42.796853], [-8.020299, 42.796869]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000070000KZ", "tipo": "EUCALIPTOS", "nombre": "TRALOBALO", "color": "#7FFF00", "area_m2": 312.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.021179, 42.796652], [-8.021154, 42.796637], [-8.021137, 42.796619], [-8.021102, 42.796512], [-8.021056, 42.796392], [-8.020982, 42.796277], [-8.020927, 42.796219], [-8.021109, 42.796211], [-8.021121, 42.796257], [-8.021135, 42.796463], [-8.021179, 42.796652]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000230000KH", "tipo": "LABRADIO", "nombre": "CANCELO", "color": "#FFA500", "area_m2": 1537.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.0193, 42.797191], [-8.019438, 42.797309], [-8.01935, 42.797346], [-8.019289, 42.797387], [-8.019186, 42.797462], [-8.018663, 42.797212], [-8.018817, 42.797016], [-8.0193, 42.797191]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000240000KO", "tipo": "LABRADIO", "nombre": "CORREDOIRA", "color": "#FFA500", "area_m2": 4025.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.0193, 42.797191], [-8.018817, 42.797016], [-8.018663, 42.797212], [-8.018549, 42.796325], [-8.018541, 42.796267], [-8.018603, 42.796284], [-8.018679, 42.796306], [-8.018751, 42.796326], [-8.018883, 42.796363], [-8.019063, 42.796428], [-8.019129, 42.796452], [-8.019145, 42.796469], [-8.019234, 42.796559], [-8.019212, 42.79662], [-8.019193, 42.796686], [-8.019191, 42.796691], [-8.019179, 42.796717], [-8.019198, 42.796824], [-8.019232, 42.79709], [-8.019264, 42.79716], [-8.0193, 42.797191]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000220000KA", "tipo": "LABRADIO", "nombre": "CANCELO", "color": "#FFA500", "area_m2": 2756.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.02007, 42.796663], [-8.020103, 42.79668], [-8.019569, 42.796984], [-8.019264, 42.79716], [-8.019232, 42.79709], [-8.019198, 42.796824], [-8.019179, 42.796717], [-8.019191, 42.796691], [-8.019193, 42.796686], [-8.019212, 42.79662], [-8.019234, 42.796559], [-8.019455, 42.796571], [-8.019601, 42.796584], [-8.019779, 42.796592], [-8.019822, 42.796598], [-8.019905, 42.79661], [-8.019974, 42.79662], [-8.020038, 42.796648], [-8.02007, 42.796663]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000210000KT", "tipo": "LABRADIO", "nombre": "OS CHAOS", "color": "#FFA500", "area_m2": 1906.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.020274, 42.796813], [-8.02028, 42.796828], [-8.020112, 42.796894], [-8.019988, 42.796957], [-8.019875, 42.797052], [-8.019726, 42.797168], [-8.019597, 42.797244], [-8.019447, 42.797305], [-8.019438, 42.797309], [-8.0193, 42.797191], [-8.019264, 42.79716], [-8.019569, 42.796984], [-8.020103, 42.79668], [-8.02016, 42.796708], [-8.020223, 42.796756], [-8.020274, 42.796813]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000260000KC", "tipo": "MATORRAL", "nombre": "PEDROUZO", "color": "#FFFF00", "area_m2": 1298.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.019167, 42.796107], [-8.019212, 42.796177], [-8.019063, 42.796428], [-8.018883, 42.796363], [-8.018751, 42.796326], [-8.018679, 42.796306], [-8.01896, 42.79596], [-8.018989, 42.795924], [-8.01914, 42.796043], [-8.019167, 42.796107]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000280000KQ", "tipo": "MATORRAL", "nombre": "PEDROUZO", "color": "#FFFF00", "area_m2": 1556.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018663, 42.797212], [-8.019186, 42.797462], [-8.0191, 42.79763], [-8.019089, 42.797721], [-8.018542, 42.797471], [-8.018486, 42.797445], [-8.018544, 42.79737], [-8.018627, 42.79726], [-8.018644, 42.797237], [-8.018663, 42.797212]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000270000KJ", "tipo": "MATORRAL", "nombre": "PEDROUZO", "color": "#FFFF00", "area_m2": 2029.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.019739, 42.796207], [-8.019797, 42.796264], [-8.019817, 42.79646], [-8.019145, 42.796469], [-8.019129, 42.796452], [-8.019063, 42.796428], [-8.019212, 42.796177], [-8.019167, 42.796107], [-8.01914, 42.796043], [-8.019304, 42.796065], [-8.019443, 42.796108], [-8.019739, 42.796207]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000290000KX", "tipo": "MATORRAL", "nombre": "PEDROUZO", "color": "#FFFF00", "area_m2": 3035.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018542, 42.797471], [-8.019089, 42.797721], [-8.019074, 42.797859], [-8.019034, 42.797933], [-8.018961, 42.798005], [-8.018861, 42.798046], [-8.018819, 42.798064], [-8.018664, 42.798065], [-8.018651, 42.798065], [-8.018389, 42.798043], [-8.018361, 42.797976], [-8.018347, 42.79789], [-8.018344, 42.797798], [-8.018345, 42.797763], [-8.018346, 42.797724], [-8.01835, 42.79771], [-8.018362, 42.797659], [-8.01837, 42.797624], [-8.018392, 42.797573], [-8.018395, 42.797565], [-8.01842, 42.797532], [-8.018486, 42.797445], [-8.018542, 42.797471]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000250000KV", "tipo": "LABRADIO", "nombre": "CORREDOIRA", "color": "#FFA500", "area_m2": 640.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.019822, 42.796598], [-8.019779, 42.796592], [-8.019601, 42.796584], [-8.019455, 42.796571], [-8.019234, 42.796559], [-8.019145, 42.796469], [-8.019817, 42.79646], [-8.019822, 42.796598]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000310000KL", "tipo": "PINOS", "nombre": "PEDROUZO", "color": "#FF6347", "area_m2": 652.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018647, 42.798415], [-8.019059, 42.798428], [-8.019055, 42.798445], [-8.019013, 42.798597], [-8.018614, 42.798575], [-8.018594, 42.798574], [-8.018614, 42.798414], [-8.018647, 42.798415]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000300000KE", "tipo": "EUCALIPTOS", "nombre": "PEDROUZO", "color": "#7FFF00", "area_m2": 902.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018881, 42.798168], [-8.018883, 42.798168], [-8.01898, 42.798206], [-8.019049, 42.798273], [-8.019073, 42.79837], [-8.01907, 42.798381], [-8.019059, 42.798428], [-8.018647, 42.798415], [-8.018614, 42.798414], [-8.018616, 42.798397], [-8.018643, 42.798253], [-8.018714, 42.798162], [-8.018727, 42.798151], [-8.018881, 42.798168]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000330000KZ", "tipo": "PINOS", "nombre": "CONZADO DA CORREDOIRA", "color": "#FF6347", "area_m2": 4881.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.01907, 42.798927], [-8.019315, 42.799121], [-8.01923, 42.799177], [-8.018609, 42.799613], [-8.018433, 42.799731], [-8.018326, 42.799715], [-8.018273, 42.799706], [-8.01825, 42.799679], [-8.018247, 42.799647], [-8.018304, 42.799532], [-8.018278, 42.799416], [-8.018221, 42.799276], [-8.018224, 42.799162], [-8.018242, 42.799136], [-8.01829, 42.799065], [-8.018415, 42.798955], [-8.018612, 42.798963], [-8.018692, 42.798959], [-8.018792, 42.798955], [-8.018857, 42.798919], [-8.018907, 42.798843], [-8.018912, 42.798834], [-8.01907, 42.798927]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000320000KS", "tipo": "MATORRAL", "nombre": "PEDROUZO", "color": "#FFFF00", "area_m2": 1403.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018614, 42.798575], [-8.019013, 42.798597], [-8.019011, 42.798603], [-8.018945, 42.798764], [-8.018912, 42.798834], [-8.018907, 42.798843], [-8.018857, 42.798919], [-8.018792, 42.798955], [-8.018692, 42.798959], [-8.018612, 42.798963], [-8.018415, 42.798955], [-8.018497, 42.798838], [-8.01859, 42.79861], [-8.018594, 42.798574], [-8.018614, 42.798575]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000350000KN", "tipo": "MATORRAL", "nombre": "ANELLAS", "color": "#FFFF00", "area_m2": 21039.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018819, 42.798064], [-8.018747, 42.798095], [-8.018685, 42.798147], [-8.018609, 42.798245], [-8.018581, 42.798394], [-8.018572, 42.798471], [-8.018555, 42.798605], [-8.018465, 42.798828], [-8.018454, 42.798843], [-8.018385, 42.79894], [-8.01826, 42.799051], [-8.018189, 42.799156], [-8.018185, 42.79928], [-8.018207, 42.799333], [-8.018038, 42.799304], [-8.017899, 42.799259], [-8.017826, 42.799205], [-8.017727, 42.799117], [-8.017659, 42.799032], [-8.017614, 42.798998], [-8.017535, 42.798938], [-8.017438, 42.798902], [-8.017345, 42.79888], [-8.017085, 42.79887], [-8.017013, 42.798867], [-8.01698, 42.798864], [-8.016527, 42.798825], [-8.016352, 42.79881], [-8.016517, 42.798612], [-8.016604, 42.798482], [-8.016692, 42.798263], [-8.016759, 42.798117], [-8.016793, 42.797975], [-8.016817, 42.797873], [-8.016821, 42.797856], [-8.016851, 42.79771], [-8.016894, 42.797503], [-8.017342, 42.797562], [-8.017377, 42.797635], [-8.017407, 42.797686], [-8.017453, 42.797762], [-8.017621, 42.797762], [-8.017869, 42.797762], [-8.017903, 42.797973], [-8.018389, 42.798043], [-8.018651, 42.798065], [-8.018664, 42.798065], [-8.018819, 42.798064]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000380000KI", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 7456.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.017249, 42.800511], [-8.017244, 42.800516], [-8.017153, 42.800599], [-8.017007, 42.800523], [-8.016963, 42.800565], [-8.016957, 42.800561], [-8.016908, 42.800535], [-8.016899, 42.800531], [-8.016863, 42.800508], [-8.016462, 42.800259], [-8.015952, 42.799943], [-8.015887, 42.799801], [-8.016216, 42.799723], [-8.016865, 42.799591], [-8.016973, 42.799592], [-8.017031, 42.799765], [-8.017176, 42.800045], [-8.017278, 42.800153], [-8.01747, 42.800307], [-8.017283, 42.80048], [-8.01725, 42.800461], [-8.017231, 42.80045], [-8.017198, 42.800482], [-8.017217, 42.800493], [-8.017249, 42.800511]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000340000KG", "tipo": "PINOS", "nombre": "CONZADO DA CORREDOIRA", "color": "#FF6347", "area_m2": 1031.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018389, 42.798043], [-8.017903, 42.797973], [-8.017869, 42.797762], [-8.018345, 42.797763], [-8.018344, 42.797798], [-8.018347, 42.79789], [-8.018361, 42.797976], [-8.018389, 42.798043]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000360000KU", "tipo": "CARBALLOS", "nombre": "ANELLAS", "color": "#FF00FF", "area_m2": 1464.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016692, 42.798263], [-8.016604, 42.798482], [-8.016517, 42.798612], [-8.016352, 42.79881], [-8.016236, 42.798909], [-8.016017, 42.799088], [-8.015995, 42.799028], [-8.016, 42.798955], [-8.016005, 42.798888], [-8.016028, 42.79884], [-8.016043, 42.798828], [-8.016189, 42.798709], [-8.016331, 42.798579], [-8.016457, 42.79842], [-8.01653, 42.798296], [-8.016567, 42.798266], [-8.01661, 42.798265], [-8.016692, 42.798263]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000430000KR", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 850.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014631, 42.798245], [-8.014646, 42.79825], [-8.014567, 42.798311], [-8.014453, 42.798371], [-8.014299, 42.798504], [-8.014056, 42.798398], [-8.01429, 42.798239], [-8.014437, 42.798139], [-8.014502, 42.798185], [-8.014631, 42.798245]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000390000KP", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 5084.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018124, 42.799834], [-8.018139, 42.799936], [-8.018052, 42.800024], [-8.017995, 42.800102], [-8.017985, 42.800167], [-8.017986, 42.800169], [-8.017695, 42.800227], [-8.01747, 42.800307], [-8.017278, 42.800153], [-8.017176, 42.800045], [-8.017031, 42.799765], [-8.016973, 42.799592], [-8.017315, 42.799601], [-8.017427, 42.799604], [-8.017591, 42.799628], [-8.017682, 42.799642], [-8.017939, 42.799691], [-8.018056, 42.799711], [-8.018085, 42.799742], [-8.018124, 42.799834]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000420000KK", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 4554.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015426, 42.798508], [-8.015448, 42.79852], [-8.015286, 42.798865], [-8.015201, 42.799079], [-8.015113, 42.799031], [-8.015044, 42.798987], [-8.01497, 42.798937], [-8.014836, 42.798864], [-8.014738, 42.798791], [-8.014619, 42.798717], [-8.014502, 42.798677], [-8.014387, 42.798626], [-8.014373, 42.798619], [-8.014244, 42.798551], [-8.014299, 42.798504], [-8.014453, 42.798371], [-8.014567, 42.798311], [-8.014646, 42.79825], [-8.015022, 42.798366], [-8.015174, 42.798413], [-8.015339, 42.79847], [-8.015398, 42.798496], [-8.015426, 42.798508]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000410000KD", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 3497.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015967, 42.798788], [-8.016043, 42.798828], [-8.016028, 42.79884], [-8.016005, 42.798888], [-8.016, 42.798955], [-8.015995, 42.799028], [-8.016017, 42.799088], [-8.015905, 42.799188], [-8.015757, 42.799188], [-8.015653, 42.799212], [-8.01555, 42.799234], [-8.015468, 42.799218], [-8.015375, 42.799175], [-8.015251, 42.799106], [-8.015201, 42.799079], [-8.015286, 42.798865], [-8.015448, 42.79852], [-8.0156, 42.798598], [-8.015871, 42.798738], [-8.015967, 42.798788]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000440000KY", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 677.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014372, 42.798094], [-8.014437, 42.798139], [-8.01429, 42.798239], [-8.014056, 42.798398], [-8.013908, 42.798334], [-8.013889, 42.798323], [-8.01411, 42.798174], [-8.014303, 42.798043], [-8.014345, 42.798074], [-8.014372, 42.798094]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000370000KB", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 14309.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018236, 42.799404], [-8.018244, 42.799422], [-8.018268, 42.799529], [-8.018211, 42.799643], [-8.018085, 42.799742], [-8.018056, 42.799711], [-8.017939, 42.799691], [-8.017682, 42.799642], [-8.017591, 42.799628], [-8.017427, 42.799604], [-8.017315, 42.799601], [-8.016973, 42.799592], [-8.016865, 42.799591], [-8.016216, 42.799723], [-8.015887, 42.799801], [-8.015894, 42.799599], [-8.015889, 42.799388], [-8.015873, 42.799217], [-8.015905, 42.799188], [-8.016017, 42.799088], [-8.016236, 42.798909], [-8.016352, 42.79881], [-8.016527, 42.798825], [-8.01698, 42.798864], [-8.017013, 42.798867], [-8.017085, 42.79887], [-8.017345, 42.79888], [-8.017438, 42.798902], [-8.017535, 42.798938], [-8.017614, 42.798998], [-8.017659, 42.799032], [-8.017727, 42.799117], [-8.017826, 42.799205], [-8.017899, 42.799259], [-8.018038, 42.799304], [-8.018207, 42.799333], [-8.018236, 42.799404]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000400000KW", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 5548.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.017249, 42.800511], [-8.017217, 42.800493], [-8.017198, 42.800482], [-8.017231, 42.80045], [-8.01725, 42.800461], [-8.017283, 42.80048], [-8.01747, 42.800307], [-8.017695, 42.800227], [-8.017986, 42.800169], [-8.018152, 42.800424], [-8.018323, 42.800699], [-8.01832, 42.800715], [-8.018319, 42.80072], [-8.01819, 42.800707], [-8.018118, 42.800699], [-8.018061, 42.801003], [-8.018034, 42.801094], [-8.017996, 42.801076], [-8.017766, 42.800969], [-8.017562, 42.800873], [-8.017339, 42.800767], [-8.017189, 42.800692], [-8.016963, 42.800565], [-8.017007, 42.800523], [-8.017153, 42.800599], [-8.017244, 42.800516], [-8.017249, 42.800511]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000470000KT", "tipo": "EUCALIPTOS", "nombre": "REGUEIRA-COTO DO PIÑEIRO", "color": "#7FFF00", "area_m2": 2131.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.01403, 42.797816], [-8.014099, 42.797875], [-8.013881, 42.79803], [-8.01366, 42.798188], [-8.013594, 42.798138], [-8.013453, 42.797988], [-8.013337, 42.797907], [-8.013516, 42.797754], [-8.013738, 42.797563], [-8.013829, 42.797642], [-8.01403, 42.797816]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000490000KH", "tipo": "EUCALIPTOS", "nombre": "ESTIVADA", "color": "#7FFF00", "area_m2": 25971.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014244, 42.798551], [-8.014373, 42.798619], [-8.01413, 42.798853], [-8.013797, 42.799136], [-8.013716, 42.799107], [-8.013677, 42.799093], [-8.01315, 42.798903], [-8.013143, 42.798901], [-8.012883, 42.798816], [-8.012587, 42.798771], [-8.012122, 42.798734], [-8.012062, 42.79873], [-8.01165, 42.798698], [-8.011584, 42.798694], [-8.011348, 42.79868], [-8.011328, 42.798679], [-8.011323, 42.798626], [-8.011322, 42.798616], [-8.011298, 42.79851], [-8.011253, 42.79842], [-8.01128, 42.798365], [-8.011283, 42.798362], [-8.011373, 42.798259], [-8.01151, 42.798108], [-8.011525, 42.79806], [-8.011508, 42.798017], [-8.011488, 42.797997], [-8.011625, 42.797823], [-8.01178, 42.797626], [-8.011877, 42.797548], [-8.011994, 42.797521], [-8.012105, 42.7975], [-8.012165, 42.797489], [-8.012208, 42.797488], [-8.012324, 42.797485], [-8.012405, 42.797529], [-8.012557, 42.797584], [-8.012583, 42.797592], [-8.012815, 42.79766], [-8.013133, 42.797817], [-8.013337, 42.797907], [-8.013453, 42.797988], [-8.013594, 42.798138], [-8.01366, 42.798188], [-8.0137, 42.798218], [-8.013721, 42.79823], [-8.013775, 42.79826], [-8.013866, 42.798311], [-8.013889, 42.798323], [-8.013908, 42.798334], [-8.014056, 42.798398], [-8.014299, 42.798504], [-8.014244, 42.798551]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000510000KV", "tipo": "EUCALIPTOS", "nombre": "TROZO DO CRUCEIRO", "color": "#7FFF00", "area_m2": 259.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018517, 42.800875], [-8.018505, 42.800942], [-8.018469, 42.800977], [-8.018423, 42.800997], [-8.018328, 42.801019], [-8.018311, 42.801024], [-8.018375, 42.800874], [-8.018404, 42.800766], [-8.018509, 42.800835], [-8.018517, 42.800875]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000460000KM", "tipo": "MATORRAL", "nombre": "TROZO DO CRUCEIRO", "color": "#FFFF00", "area_m2": 260.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014143, 42.797913], [-8.014185, 42.79795], [-8.01399, 42.798097], [-8.013775, 42.79826], [-8.013721, 42.79823], [-8.01394, 42.798066], [-8.014143, 42.797913]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000450000KF", "tipo": "PINOS", "nombre": "ZARRA DO COTO", "color": "#FF6347", "area_m2": 605.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014217, 42.797978], [-8.014303, 42.798043], [-8.01411, 42.798174], [-8.013889, 42.798323], [-8.013866, 42.798311], [-8.013775, 42.79826], [-8.01399, 42.798097], [-8.014185, 42.79795], [-8.0142, 42.797963], [-8.014217, 42.797978]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000480000KA", "tipo": "MATORRAL", "nombre": "REGUEIRA-CARREIRA COBA", "color": "#FFFF00", "area_m2": 3798.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.013547, 42.797429], [-8.013738, 42.797563], [-8.013516, 42.797754], [-8.013337, 42.797907], [-8.013133, 42.797817], [-8.012815, 42.79766], [-8.012583, 42.797592], [-8.012595, 42.797556], [-8.012597, 42.797553], [-8.012631, 42.797506], [-8.012704, 42.797436], [-8.012782, 42.797386], [-8.012948, 42.797314], [-8.013186, 42.797242], [-8.013396, 42.797351], [-8.013547, 42.797429]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000500000KO", "tipo": "EUCALIPTOS", "nombre": "CAMIÑO DAS PEDRAS", "color": "#7FFF00", "area_m2": 17570.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015887, 42.799801], [-8.015952, 42.799943], [-8.015793, 42.799973], [-8.015737, 42.799996], [-8.015633, 42.800038], [-8.015616, 42.800048], [-8.015555, 42.800085], [-8.0155, 42.800126], [-8.015439, 42.800172], [-8.015381, 42.800215], [-8.015195, 42.800335], [-8.015116, 42.800418], [-8.014842, 42.800027], [-8.014619, 42.799893], [-8.014457, 42.799795], [-8.014244, 42.799655], [-8.014174, 42.799461], [-8.014088, 42.799309], [-8.013948, 42.799189], [-8.013946, 42.799188], [-8.013826, 42.799146], [-8.013797, 42.799136], [-8.01413, 42.798853], [-8.014373, 42.798619], [-8.014387, 42.798626], [-8.014502, 42.798677], [-8.014619, 42.798717], [-8.014738, 42.798791], [-8.014836, 42.798864], [-8.01497, 42.798937], [-8.015044, 42.798987], [-8.015113, 42.799031], [-8.015201, 42.799079], [-8.015251, 42.799106], [-8.015375, 42.799175], [-8.015468, 42.799218], [-8.01555, 42.799234], [-8.015653, 42.799212], [-8.015757, 42.799188], [-8.015905, 42.799188], [-8.015873, 42.799217], [-8.015889, 42.799388], [-8.015894, 42.799599], [-8.015887, 42.799801]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000540000KQ", "tipo": "EUCALIPTOS", "nombre": "TROZO DO CRUCEIRO", "color": "#7FFF00", "area_m2": 472.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016926, 42.800737], [-8.016933, 42.800855], [-8.016394, 42.801067], [-8.016366, 42.801011], [-8.01643, 42.80098], [-8.016926, 42.800737]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000550000KX", "tipo": "PRADO", "nombre": "CARBALLEDO DE ARRIBA", "color": "#00FFFF", "area_m2": 2827.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.01695, 42.801159], [-8.016968, 42.801559], [-8.016955, 42.801574], [-8.016891, 42.801636], [-8.016744, 42.801774], [-8.016394, 42.801067], [-8.016933, 42.800855], [-8.016941, 42.801003], [-8.01695, 42.801159]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000560000KE", "tipo": "PRADO", "nombre": "CARBALLEDO DE ARRIBA", "color": "#00FFFF", "area_m2": 4336.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016394, 42.801067], [-8.016744, 42.801774], [-8.016732, 42.801785], [-8.016668, 42.801846], [-8.01662, 42.801891], [-8.016502, 42.80198], [-8.016372, 42.802056], [-8.016325, 42.802073], [-8.015887, 42.801116], [-8.016118, 42.801066], [-8.016366, 42.801011], [-8.016394, 42.801067]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000530000KJ", "tipo": "MATORRAL", "nombre": "CHOPERO", "color": "#FFFF00", "area_m2": 2146.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016941, 42.801003], [-8.018034, 42.801094], [-8.018001, 42.801102], [-8.017916, 42.801125], [-8.017774, 42.801157], [-8.017508, 42.801243], [-8.017305, 42.801315], [-8.017182, 42.801366], [-8.01711, 42.801422], [-8.017033, 42.801484], [-8.016968, 42.801559], [-8.01695, 42.801159], [-8.016941, 42.801003]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000520000KC", "tipo": "EUCALIPTOS", "nombre": "TROZO DO CRUCEIRO", "color": "#7FFF00", "area_m2": 2149.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.018034, 42.801094], [-8.016941, 42.801003], [-8.016933, 42.800855], [-8.016926, 42.800737], [-8.016955, 42.800574], [-8.016957, 42.800561], [-8.016963, 42.800565], [-8.017189, 42.800692], [-8.017339, 42.800767], [-8.017562, 42.800873], [-8.017766, 42.800969], [-8.017996, 42.801076], [-8.018034, 42.801094]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000570000KL", "tipo": "EUCALIPTOS", "nombre": "CARBALLEDO DE ARRIBA", "color": "#7FFF00", "area_m2": 1014.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015887, 42.801116], [-8.016325, 42.802073], [-8.016305, 42.80208], [-8.016028, 42.801711], [-8.015746, 42.801153], [-8.015887, 42.801116]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000600000KG", "tipo": "PRADO", "nombre": "CROIO BLANCO", "color": "#00FFFF", "area_m2": 346.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015847, 42.801641], [-8.016185, 42.802121], [-8.016128, 42.802141], [-8.01578, 42.801673], [-8.015847, 42.801641]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000610000KN", "tipo": "PRADO", "nombre": "CAVADA", "color": "#00FFFF", "area_m2": 1048.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.01578, 42.801673], [-8.016128, 42.802141], [-8.016047, 42.802169], [-8.015909, 42.802214], [-8.01561, 42.801755], [-8.01578, 42.801673]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000580000KS", "tipo": "PRADO", "nombre": "CROIO BLANCO", "color": "#00FFFF", "area_m2": 325.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016028, 42.801711], [-8.015634, 42.801184], [-8.015665, 42.801174], [-8.015746, 42.801153], [-8.016028, 42.801711]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000650000KP", "tipo": "EUCALIPTOS", "nombre": "COTO DAS CEPAS", "color": "#7FFF00", "area_m2": 520.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015403, 42.801317], [-8.015448, 42.801411], [-8.014921, 42.801567], [-8.014913, 42.801556], [-8.014909, 42.801491], [-8.014926, 42.801449], [-8.015403, 42.801317]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000590000KZ", "tipo": "EUCALIPTOS", "nombre": "CROIO BLANCO", "color": "#7FFF00", "area_m2": 2109.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016028, 42.801711], [-8.016305, 42.80208], [-8.016185, 42.802121], [-8.015847, 42.801641], [-8.01578, 42.801673], [-8.01561, 42.801755], [-8.015448, 42.801411], [-8.015403, 42.801317], [-8.015387, 42.801259], [-8.015634, 42.801184], [-8.016028, 42.801711]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000640000KI", "tipo": "PRADO", "nombre": "TROZO DO CRUCEIRO", "color": "#00FFFF", "area_m2": 1805.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015448, 42.801411], [-8.01561, 42.801755], [-8.015169, 42.801913], [-8.015149, 42.80188], [-8.014921, 42.801567], [-8.015448, 42.801411]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000630000KB", "tipo": "PINOS", "nombre": "TROZO DO CRUCEIRO", "color": "#FF6347", "area_m2": 226.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015309, 42.8022], [-8.015647, 42.802289], [-8.015391, 42.802359], [-8.015373, 42.802362], [-8.015309, 42.8022]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000620000KU", "tipo": "EUCALIPTOS", "nombre": "CAVADA", "color": "#7FFF00", "area_m2": 2122.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.01561, 42.801755], [-8.015909, 42.802214], [-8.015834, 42.802238], [-8.015647, 42.802289], [-8.015309, 42.8022], [-8.015199, 42.801961], [-8.015169, 42.801913], [-8.01561, 42.801755]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000670000KD", "tipo": "EUCALIPTOS", "nombre": "PENA DO CORGO", "color": "#7FFF00", "area_m2": 1120.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015774, 42.800875], [-8.015818, 42.80097], [-8.015, 42.801168], [-8.014994, 42.801096], [-8.014989, 42.801004], [-8.015398, 42.800917], [-8.015758, 42.800841], [-8.015774, 42.800875]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000680000KK", "tipo": "ARBOLES", "nombre": "URIXEIRA", "color": "#00CED1", "area_m2": 742.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015703, 42.800726], [-8.015758, 42.800841], [-8.015398, 42.800917], [-8.014989, 42.801004], [-8.014995, 42.800909], [-8.015358, 42.800815], [-8.015703, 42.800726]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000660000KW", "tipo": "EUCALIPTOS", "nombre": "COTO DAS CEPAS", "color": "#7FFF00", "area_m2": 1674.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015818, 42.80097], [-8.015887, 42.801116], [-8.015746, 42.801153], [-8.015665, 42.801174], [-8.015634, 42.801184], [-8.015387, 42.801259], [-8.015403, 42.801317], [-8.014926, 42.801449], [-8.014965, 42.80135], [-8.015007, 42.801239], [-8.015, 42.801168], [-8.015818, 42.80097]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000700000KY", "tipo": "PRADO", "nombre": "PRADO DA CHOUSA", "color": "#00FFFF", "area_m2": 977.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.01555, 42.800406], [-8.015647, 42.800609], [-8.015299, 42.800721], [-8.015001, 42.800818], [-8.015008, 42.800716], [-8.015017, 42.800691], [-8.015204, 42.800591], [-8.01555, 42.800406]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000710000KF", "tipo": "ARBOLES", "nombre": "CHOUSA DE ABAIXO", "color": "#00CED1", "area_m2": 1029.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015439, 42.800172], [-8.01555, 42.800406], [-8.015204, 42.800591], [-8.015017, 42.800691], [-8.015116, 42.800418], [-8.015195, 42.800335], [-8.015381, 42.800215], [-8.015439, 42.800172]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000690000KR", "tipo": "MATORRAL", "nombre": "URIXEIRA", "color": "#FFFF00", "area_m2": 682.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015647, 42.800609], [-8.015703, 42.800726], [-8.015358, 42.800815], [-8.014995, 42.800909], [-8.015001, 42.800818], [-8.015299, 42.800721], [-8.015647, 42.800609]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000720000KM", "tipo": "ARBOLES", "nombre": "CHOUSA DE ABAIXO", "color": "#00CED1", "area_m2": 1454.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015846, 42.80066], [-8.016118, 42.801066], [-8.015887, 42.801116], [-8.015818, 42.80097], [-8.015774, 42.800875], [-8.015758, 42.800841], [-8.015703, 42.800726], [-8.015647, 42.800609], [-8.01555, 42.800406], [-8.015439, 42.800172], [-8.0155, 42.800126], [-8.015846, 42.80066]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000740000KA", "tipo": "CARBALLOS", "nombre": "CODESAL", "color": "#FF00FF", "area_m2": 1319.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016338, 42.800875], [-8.01643, 42.80098], [-8.016366, 42.801011], [-8.016118, 42.801066], [-8.015846, 42.80066], [-8.01604, 42.800533], [-8.016271, 42.800798], [-8.016338, 42.800875]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000760000KO", "tipo": "CASTAÑOS", "nombre": "CODESAL", "color": "#0000FF", "area_m2": 1989.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016462, 42.800259], [-8.016863, 42.800508], [-8.016271, 42.800798], [-8.01604, 42.800533], [-8.016218, 42.800418], [-8.016462, 42.800259]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000730000KT", "tipo": "ARBOLES", "nombre": "CHOUSA DE ABAIXO", "color": "#00CED1", "area_m2": 1080.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015616, 42.800048], [-8.01604, 42.800533], [-8.015846, 42.80066], [-8.0155, 42.800126], [-8.015555, 42.800085], [-8.015616, 42.800048]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000750000KH", "tipo": "CASTAÑOS", "nombre": "CODESAL", "color": "#0000FF", "area_m2": 961.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015737, 42.799996], [-8.016218, 42.800418], [-8.01604, 42.800533], [-8.015616, 42.800048], [-8.015633, 42.800038], [-8.015737, 42.799996]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000780000KC", "tipo": "PRADO", "nombre": "BRAÑAS", "color": "#00FFFF", "area_m2": 757.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016955, 42.800574], [-8.016926, 42.800737], [-8.01643, 42.80098], [-8.016338, 42.800875], [-8.016955, 42.800574]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000770000KV", "tipo": "MATORRAL", "nombre": "BRAÑAS", "color": "#FFFF00", "area_m2": 610.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016908, 42.800535], [-8.016957, 42.800561], [-8.016955, 42.800574], [-8.016338, 42.800875], [-8.016271, 42.800798], [-8.016863, 42.800508], [-8.016899, 42.800531], [-8.016908, 42.800535]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000800000KQ", "tipo": "PRADO", "nombre": "BRAÑAS", "color": "#00FFFF", "area_m2": 2260.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016941, 42.802536], [-8.016988, 42.802663], [-8.016976, 42.802734], [-8.016942, 42.802786], [-8.016906, 42.802821], [-8.016369, 42.802697], [-8.01633, 42.802688], [-8.016002, 42.802613], [-8.015793, 42.802564], [-8.015848, 42.802566], [-8.015904, 42.802556], [-8.015955, 42.802528], [-8.016013, 42.80248], [-8.016023, 42.802467], [-8.016446, 42.802454], [-8.016688, 42.80244], [-8.016729, 42.802437], [-8.016746, 42.802491], [-8.016762, 42.802489], [-8.01678, 42.802548], [-8.016941, 42.802536]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000790000KJ", "tipo": "PRADO", "nombre": "BRAÑAS", "color": "#00FFFF", "area_m2": 1727.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.0169, 42.802366], [-8.016919, 42.802426], [-8.016688, 42.80244], [-8.016446, 42.802454], [-8.016023, 42.802467], [-8.016069, 42.802426], [-8.016321, 42.802233], [-8.016564, 42.8021], [-8.016713, 42.802037], [-8.0168, 42.802016], [-8.016806, 42.802045], [-8.016825, 42.802113], [-8.016847, 42.802178], [-8.01686, 42.802213], [-8.016881, 42.802271], [-8.016895, 42.802342], [-8.0169, 42.802366]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000820000KE", "tipo": "PRADO", "nombre": "BRAÑA DE SIMON", "color": "#00FFFF", "area_m2": 644.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016369, 42.802697], [-8.016906, 42.802821], [-8.016888, 42.80284], [-8.016835, 42.802889], [-8.016753, 42.802941], [-8.016642, 42.80299], [-8.016612, 42.802998], [-8.016369, 42.802697]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000810000KX", "tipo": "PRADO", "nombre": "BRAÑAS", "color": "#00FFFF", "area_m2": 995.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016002, 42.802613], [-8.01633, 42.802688], [-8.016146, 42.802856], [-8.016062, 42.802933], [-8.015944, 42.80304], [-8.015884, 42.802979], [-8.015803, 42.802845], [-8.016002, 42.802613]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000830000KL", "tipo": "MATORRAL", "nombre": "BRAÑA", "color": "#FFA500", "area_m2": 1765.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016369, 42.802697], [-8.016612, 42.802998], [-8.016507, 42.803047], [-8.016419, 42.803103], [-8.016359, 42.803141], [-8.016321, 42.803166], [-8.016285, 42.803189], [-8.016222, 42.803245], [-8.016179, 42.803275], [-8.016139, 42.80327], [-8.016025, 42.80312], [-8.015955, 42.803051], [-8.015944, 42.80304], [-8.016062, 42.802933], [-8.016146, 42.802856], [-8.01633, 42.802688], [-8.016369, 42.802697]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000860000KG", "tipo": "PRADO", "nombre": "CARBALLIÑO", "color": "#00FFFF", "area_m2": 842.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015469, 42.803403], [-8.016086, 42.803554], [-8.01608, 42.80361], [-8.016062, 42.803633], [-8.016013, 42.80365], [-8.015942, 42.803657], [-8.015832, 42.803656], [-8.015716, 42.80366], [-8.01559, 42.803614], [-8.015495, 42.803521], [-8.015466, 42.803456], [-8.015468, 42.803415], [-8.015469, 42.803403]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000870000KN", "tipo": "LABRADIO", "nombre": "CRUCEIRO", "color": "#FFA500", "area_m2": 1988.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.016083, 42.80325], [-8.0161, 42.803429], [-8.01609, 42.803524], [-8.016086, 42.803554], [-8.015469, 42.803403], [-8.015471, 42.803366], [-8.0155, 42.803258], [-8.015563, 42.803187], [-8.015565, 42.803184], [-8.015593, 42.803152], [-8.015613, 42.803102], [-8.015888, 42.803052], [-8.01591, 42.803048], [-8.016013, 42.803144], [-8.016083, 42.80325]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000880000KU", "tipo": "PRADO", "nombre": "MARTINGOS", "color": "#00FFFF", "area_m2": 147.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015377, 42.803105], [-8.015565, 42.803184], [-8.015563, 42.803187], [-8.0155, 42.803258], [-8.015473, 42.803255], [-8.015453, 42.803242], [-8.015382, 42.803198], [-8.015366, 42.803164], [-8.015376, 42.803108], [-8.015377, 42.803105]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000890000KB", "tipo": "PRADO", "nombre": "MARTINGOS", "color": "#00FFFF", "area_m2": 316.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015401, 42.802966], [-8.015639, 42.80304], [-8.015613, 42.803102], [-8.015593, 42.803152], [-8.015565, 42.803184], [-8.015377, 42.803105], [-8.015401, 42.802966]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000920000KW", "tipo": "EUCALIPTOS", "nombre": "COTO DO PIÑEIRO", "color": "#7FFF00", "area_m2": 5276.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015382, 42.803198], [-8.015453, 42.803242], [-8.015149, 42.803527], [-8.015059, 42.80353], [-8.01477, 42.80351], [-8.014555, 42.803476], [-8.014407, 42.803424], [-8.01449, 42.803257], [-8.014586, 42.80304], [-8.014677, 42.802949], [-8.014819, 42.80283], [-8.014993, 42.802738], [-8.015141, 42.802666], [-8.015148, 42.802661], [-8.015158, 42.802677], [-8.015255, 42.802749], [-8.015306, 42.802804], [-8.01538, 42.802958], [-8.015401, 42.802966], [-8.015377, 42.803105], [-8.015376, 42.803108], [-8.015366, 42.803164], [-8.015382, 42.803198]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000910000KP", "tipo": "EUCALIPTOS", "nombre": "CARREIRA COBA", "color": "#7FFF00", "area_m2": 181.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015716, 42.802782], [-8.015847, 42.802966], [-8.015652, 42.802997], [-8.015716, 42.802782]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000930000KD", "tipo": "EUCALIPTOS", "nombre": "CAMIÑO DAS PEDRAS", "color": "#7FFF00", "area_m2": 1211.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015027, 42.802477], [-8.015148, 42.802661], [-8.015141, 42.802666], [-8.014993, 42.802738], [-8.014819, 42.80283], [-8.014778, 42.802783], [-8.014739, 42.802739], [-8.014645, 42.802633], [-8.014589, 42.80257], [-8.014536, 42.80251], [-8.014495, 42.802464], [-8.014625, 42.802472], [-8.014976, 42.80248], [-8.015027, 42.802477]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000970000KF", "tipo": "EUCALIPTOS", "nombre": "CASARELLO", "color": "#7FFF00", "area_m2": 656.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014589, 42.80257], [-8.014645, 42.802633], [-8.013975, 42.803168], [-8.013967, 42.803162], [-8.013918, 42.803107], [-8.014589, 42.80257]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000900000KI", "tipo": "GRANJA", "nombre": "MARTINGOS", "color": "#FF0000", "area_m2": 212.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015897, 42.803037], [-8.01591, 42.803048], [-8.015888, 42.803052], [-8.015613, 42.803102], [-8.015639, 42.80304], [-8.015652, 42.802997], [-8.015847, 42.802966], [-8.015897, 42.803037]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000950000KR", "tipo": "EUCALIPTOS", "nombre": "COTO DAS CEPAS", "color": "#7FFF00", "area_m2": 1388.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014778, 42.802783], [-8.014819, 42.80283], [-8.014677, 42.802949], [-8.014586, 42.80304], [-8.01449, 42.803257], [-8.014407, 42.803424], [-8.014353, 42.803406], [-8.014329, 42.803393], [-8.014137, 42.803297], [-8.014094, 42.803264], [-8.014739, 42.802739], [-8.014778, 42.802783]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000960000KY", "tipo": "EUCALIPTOS", "nombre": "CASARELLO", "color": "#7FFF00", "area_m2": 1113.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014645, 42.802633], [-8.014739, 42.802739], [-8.014094, 42.803264], [-8.014063, 42.80324], [-8.013975, 42.803168], [-8.014645, 42.802633]]]}}, {"type": "Feature", "properties": {"ref": "36020A041001000000KA", "tipo": "EUCALIPTOS", "nombre": "CAVADA", "color": "#7FFF00", "area_m2": 1105.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.013758, 42.802414], [-8.014073, 42.802436], [-8.013593, 42.802848], [-8.013553, 42.802814], [-8.013417, 42.802686], [-8.013758, 42.802414]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000940000KK", "tipo": "MATORRAL", "nombre": "TROZO DO CRUCEIRO", "color": "#FFFF00", "area_m2": 334.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.015366, 42.802443], [-8.015291, 42.802554], [-8.015238, 42.802605], [-8.015148, 42.802661], [-8.015027, 42.802477], [-8.015203, 42.802467], [-8.015366, 42.802443]]]}}, {"type": "Feature", "properties": {"ref": "36020A041001010000KH", "tipo": "EUCALIPTOS", "nombre": "CAVADA", "color": "#7FFF00", "area_m2": 460.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.013541, 42.8024], [-8.013758, 42.802414], [-8.013417, 42.802686], [-8.013324, 42.802598], [-8.013541, 42.8024]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000980000KM", "tipo": "EUCALIPTOS", "nombre": "CHOUSIÑA", "color": "#7FFF00", "area_m2": 624.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014536, 42.80251], [-8.014589, 42.80257], [-8.013918, 42.803107], [-8.013883, 42.803068], [-8.013862, 42.803049], [-8.014536, 42.80251]]]}}, {"type": "Feature", "properties": {"ref": "36020A041000990000KT", "tipo": "EUCALIPTOS", "nombre": "TROZO DO CRUCEIRO", "color": "#7FFF00", "area_m2": 2385.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.014495, 42.802464], [-8.014536, 42.80251], [-8.013862, 42.803049], [-8.013813, 42.803005], [-8.013645, 42.802891], [-8.013593, 42.802848], [-8.014073, 42.802436], [-8.014495, 42.802464]]]}}, {"type": "Feature", "properties": {"ref": "36020A041001030000KV", "tipo": "nan", "nombre": "nan", "color": "nan", "area_m2": 103.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.013119, 42.802372], [-8.013284, 42.802383], [-8.013169, 42.802477], [-8.013082, 42.80241], [-8.013119, 42.802372]]]}}, {"type": "Feature", "properties": {"ref": "36020A041001020000KO", "tipo": "EUCALIPTOS", "nombre": "CAVADA", "color": "#7FFF00", "area_m2": 378.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.013284, 42.802383], [-8.013541, 42.8024], [-8.013324, 42.802598], [-8.013321, 42.802597], [-8.013169, 42.802477], [-8.013284, 42.802383]]]}}, {"type": "Feature", "properties": {"ref": "36020A041001040000KC", "tipo": "nan", "nombre": "nan", "color": "nan", "area_m2": 17.0, "municipio": "Desconocido"}, "geometry": {"type": "Polygon", "coordinates": [[[-8.013026, 42.802366], [-8.013119, 42.802372], [-8.013082, 42.80241], [-8.013026, 42.802366]]]}}]};
+    
+    // Variables para control táctil en móvil
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+    
+    // FUNCIÓN PARA FORMATEAR ÁREA
+    function formatArea(area_m2) {
+        if (area_m2 >= 10000) {
+            return (area_m2 / 10000).toFixed(2) + ' ha';
+        } else {
+            return Math.round(area_m2).toLocaleString() + ' m²';
+        }
+    }
+    
+    // FUNCIÓN PARA MOSTRAR/OCULTAR PANEL
+    function togglePanel() {
+        const panel = document.getElementById('infoPanel');
+        panel.classList.toggle('hidden');
+    }
+    
+    // GESTOS TÁCTILES PARA MÓVIL (Deslizar panel)
+    if (window.innerWidth <= 768) {
+        const panel = document.getElementById('infoPanel');
+        
+        panel.addEventListener('touchstart', (e) => {
+            startY = e.touches[0].clientY;
+            isDragging = true;
+        }, { passive: true });
+        
+        panel.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            currentY = e.touches[0].clientY;
+            const diff = currentY - startY;
+            
+            // Solo permitir deslizar hacia abajo cuando está arriba
+            if (diff > 0 && !panel.classList.contains('hidden')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
+        panel.addEventListener('touchend', (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            const diff = currentY - startY;
+            
+            // Si desliza más de 50px hacia abajo, ocultar
+            if (diff > 50 && !panel.classList.contains('hidden')) {
+                panel.classList.add('hidden');
+            }
+            // Si desliza más de 50px hacia arriba, mostrar
+            else if (diff < -50 && panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+            }
+        });
+    }
+    
+    // INICIALIZAR MAPA
+    const map = L.map('map', {
+        zoomControl: false
+    }).setView([40.416, -3.703], 6);
+    
+    // Añadir zoom en posición responsive
+    const zoomPosition = window.innerWidth <= 768 ? 'bottomright' : 'bottomright';
+    L.control.zoom({ position: zoomPosition }).addTo(map);
+    
+    // CAPAS
+    const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri', maxZoom: 20
+    }).addTo(map);
+    
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+        pane: 'shadowPane'
+    }).addTo(map);
+    
+    const catastroLayer = L.tileLayer.wms('http://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx', {
+        layers: 'Catastro', format: 'image/png', transparent: true, opacity: 0.6, zIndex: 10
+    }).addTo(map);
+    
+    // Toggle Catastro
+    document.getElementById('toggleCatastro').addEventListener('change', function(e) {
+        if(e.target.checked) { map.addLayer(catastroLayer); }
+        else { map.removeLayer(catastroLayer); }
+    });
+
+    // ESTILOS Y GEOJSON
+    let geoJsonLayer;
+    
+    function style(feature) {
+        return {
+            fillColor: feature.properties.color,
+            weight: 2,
+            opacity: 1,
+            color: 'white',
+            dashArray: '',
+            fillOpacity: 0.55
+        };
+    }
+
+    function highlightFeature(e) {
+        var layer = e.target;
+        layer.setStyle({ weight: 4, color: '#f1c40f', fillOpacity: 0.8 });
+        layer.bringToFront();
+    }
+
+    function resetHighlight(e) { geoJsonLayer.resetStyle(e.target); }
+
+    function onEachFeature(feature, layer) {
+        layer.on({ mouseover: highlightFeature, mouseout: resetHighlight });
+        
+        const p = feature.properties;
+        const refFull = p.ref;
+        const del = refFull.substring(0, 2); 
+        const mun = refFull.substring(2, 5);
+        const ref14 = refFull.substring(0, 14);
+        
+        const urlCatastro = `https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?refcat=${ref14}&from=OVCBusqueda&RCCompleta=${refFull}&del=${del}&mun=${mun}`;
+        
+        const popupContent = `
+            <div class="popup-header-clean">
+                <div class="popup-title">${p.nombre}</div>
+                <div class="popup-type-badge" style="border: 1px solid ${p.color}; color: ${p.color}">${p.tipo}</div>
+            </div>
+            <div class="popup-body">
+                <div class="data-row">
+                    <span class="data-label">Ref. Catastral</span>
+                    <span class="data-value">${p.ref.substring(0,14)}...</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Superficie</span>
+                    <span class="data-value">${formatArea(p.area_m2)}</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Municipio</span>
+                    <span class="data-value">${p.municipio}</span>
+                </div>
+                <a href="${urlCatastro}" target="_blank" class="cadastre-link">
+                    <i class="fas fa-external-link-alt"></i> Ver en Catastro
+                </a>
+            </div>
+        `;
+        layer.bindPopup(popupContent, { maxWidth: 300 });
+    }
+
+    // CARGAR DATOS
+    geoJsonLayer = L.geoJSON(data, {
+        style: style,
+        onEachFeature: onEachFeature
+    }).addTo(map);
+
+    if (data.features.length > 0) map.fitBounds(geoJsonLayer.getBounds(), { padding: [50, 50] });
+
+    // --- LÓGICA DE NEGOCIO ---
+    
+    // 1. Calcular áreas por tipo
+    const areasPorTipo = {};
+    data.features.forEach(f => {
+        const tipo = f.properties.tipo;
+        if (!areasPorTipo[tipo]) {
+            areasPorTipo[tipo] = 0;
+        }
+        areasPorTipo[tipo] += f.properties.area_m2 || 0;
+    });
+    
+    // 2. Estadísticas generales
+    const totalArea = data.features.reduce((acc, f) => acc + (f.properties.area_m2 || 0), 0);
+    document.getElementById('total-fincas').innerText = data.features.length;
+    document.getElementById('total-area').innerText = formatArea(totalArea);
+
+    // 3. Filtros Dinámicos con superficies
+    const types = [...new Set(data.features.map(f => f.properties.tipo))].sort();
+    const container = document.getElementById('filterContainer');
+    
+    // Botón "Todos" con superficie total
+    const btnAll = document.createElement('div');
+    btnAll.className = 'filter-btn';
+    btnAll.innerHTML = `
+        <div class="filter-btn-left">
+            <span class="color-dot" style="background:#333"></span>
+            <span>Ver Todo</span>
+        </div>
+        <span class="filter-btn-right">${formatArea(totalArea)}</span>
+    `;
+    btnAll.onclick = () => { 
+        geoJsonLayer.clearLayers(); 
+        geoJsonLayer.addData(data); 
+        map.fitBounds(geoJsonLayer.getBounds()); 
+    };
+    container.appendChild(btnAll);
+
+    types.forEach(type => {
+        const feats = data.features.filter(f => f.properties.tipo === type);
+        const color = feats[0].properties.color;
+        const areaTotal = areasPorTipo[type];
+        
+        const btn = document.createElement('div');
+        btn.className = 'filter-btn';
+        btn.innerHTML = `
+            <div class="filter-btn-left">
+                <span class="color-dot" style="background:${color}"></span>
+                <span>${type}</span>
+            </div>
+            <span class="filter-btn-right">${formatArea(areaTotal)}</span>
+        `;
+        btn.onclick = () => {
+            geoJsonLayer.clearLayers();
+            geoJsonLayer.addData(feats);
+            if(feats.length > 0) map.fitBounds(geoJsonLayer.getBounds());
+        };
+        container.appendChild(btn);
+    });
+
+    // 4. Buscador
+    const searchInput = document.getElementById('searchInput');
+    const resultsBox = document.getElementById('searchResults');
+    
+    searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        resultsBox.innerHTML = '';
+        if(term.length < 2) { resultsBox.style.display = 'none'; return; }
+        
+        const matches = data.features.filter(f => 
+            f.properties.nombre.toLowerCase().includes(term) || 
+            f.properties.ref.toLowerCase().includes(term)
+        );
+        
+        if(matches.length > 0) {
+            resultsBox.style.display = 'block';
+            matches.slice(0,8).forEach(m => { 
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.innerHTML = `<b>${m.properties.nombre}</b> - <small>${m.properties.ref}</small>`;
+                div.onclick = () => {
+                    geoJsonLayer.eachLayer(layer => {
+                        if(layer.feature.properties.ref === m.properties.ref) {
+                            map.flyTo(layer.getBounds().getCenter(), 18);
+                            layer.openPopup();
+                        }
+                    });
+                    resultsBox.style.display = 'none';
+                    searchInput.value = '';
+                };
+                resultsBox.appendChild(div);
+            });
+        } else {
+             resultsBox.style.display = 'none';
+        }
+    });
+    
+    // Cerrar buscador si clic fuera
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !resultsBox.contains(e.target)) {
+            resultsBox.style.display = 'none';
+        }
+    });
+
+</script>
+</body>
+</html>
