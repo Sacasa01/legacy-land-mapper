@@ -1,12 +1,30 @@
-# --- Entorno Virtual (¡Muy importante!) ---
-.venv/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
 env/
 
-__pycache__/
-*.pyc
+# Data files
+*.xlsx
+*.csv
+!fincas2.xlsx
+!fincas2.csv
 
-# *.html
+# HTML output
+Mapa_*.html
+!demo/
 
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
